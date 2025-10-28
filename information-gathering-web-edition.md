@@ -1,283 +1,301 @@
 # Information Gathering - Web Edition
 
-A comprehensive study guide for reconnaissance and information gathering focused on web targets. Modeled after other modules in this repository and intended as a practical checklist with commands, examples, and key concepts.
+A comprehensive, screenshot-aligned study guide for reconnaissance and information gathering on web targets. Includes detailed sections and subsections with concepts, practical commands, and best practices from the Information Gathering - Web Edition module.
 
 ---
 
 ## 1. Scope, Rules, and Target Baseline
-- Define scope: in-scope domains, subdomains, IP ranges, web apps, APIs, clouds, mobile backends
-- Time windows, DoS bans, credential stuffing restrictions, rate limits
-- Data handling: PII, secrets, exports, retention
-- Obtain test account(s) if allowed
+
+### 1.1 Define Scope and Authorization
+- In-scope: domains, subdomains, IP ranges, web apps, APIs, cloud assets, mobile backends
+- Out-of-scope: explicitly excluded hosts/services, production constraints, third-party vendors if not permitted
+- Time windows, DoS bans, credential-stuffing restrictions, rate limits, traffic ceilings
+- Data handling: PII, secrets, exports, retention, redaction requirements
+- Obtain test accounts or demo tenants if allowed
 
 Checklist:
-- [ ] Confirm legal permissions and written authorization
-- [ ] Record target root(s) and environment (prod/stage/dev)
-- [ ] Note SLAs for notifications and contact escalation
+- [ ] Written authorization captured and stored securely
+- [ ] Target roots and environment (prod/stage/dev) recorded
+- [ ] SLAs for notification and contact escalation noted
+
+Best practices:
+- Maintain a scope.md with UUID, signatures of authorizers, and change log
+- Tag all collected data by sensitivity and retention window
 
 ---
 
 ## 2. DNS and Host Discovery
 
-Common commands:
-- DNS resolution and records:
-  - dig A/AAAA/CNAME/MX/TXT/NS target.tld
-  - dig ANY target.tld
-  - dig +short target.tld
-  - nslookup -type=ANY target.tld
-  - host -a target.tld
-- Zone transfer attempts (only if authorized):
-  - dig AXFR @ns1.target.tld target.tld
-- Reverse lookups and PTR sweeps:
-  - dig -x 1.2.3.4
-- Wordlist DNS bruteforce:
-  - gobuster dns -d target.tld -w wordlist.txt --wildcard
-  - amass enum -d target.tld -brute -src -ip
-  - subfinder -d target.tld -all -recursive
-- Certificate transparency (subdomains):
-  - crt.sh, censys, chaos, amass intel -d target.tld
+### 2.1 DNS Resolution and Records
+Commands:
+- dig A/AAAA/CNAME/MX/TXT/NS target.tld
+- dig ANY target.tld
+- dig +short target.tld
+- nslookup -type=ANY target.tld
+- host -a target.tld
+
+### 2.2 Zone Transfer (Authorized Only)
+- dig AXFR @ns1.target.tld target.tld
+
+### 2.3 Reverse Lookups and PTR Sweeps
+- dig -x 1.2.3.4
+
+### 2.4 Wordlist DNS Bruteforce
+- gobuster dns -d target.tld -w wordlist.txt --wildcard
+- amass enum -d target.tld -brute -src -ip
+- subfinder -d target.tld -all -recursive
+
+### 2.5 Certificate Transparency for Subdomains
+- Use crt.sh, Censys, Chaos, amass intel -d target.tld
 
 Key concepts:
-- Identify CDN in front (Cloudflare/Akamai/Fastly) vs origin IP
-- Track multiple DNS views (internal vs external), geo-DNS, split-horizon
-- Monitor TTLs for blue/green or canary deployments
+- Detect CDN (Cloudflare/Akamai/Fastly) vs origin IP; watch for anycast
+- Split-horizon/internal vs external DNS views; geo-DNS
+- Monitor TTL changes for blue/green or canary rollouts
 
 ---
 
 ## 3. Subdomain and Asset Enumeration
 
-Tools/commands:
+### 3.1 Passive and Active Enumeration
 - amass enum -passive -d target.tld -o subpassive.txt
 - amass enum -active -d target.tld -brute -o subactive.txt
 - subfinder -d target.tld -all -o subfinder.txt
 - assetfinder --subs-only target.tld
-- github-subdomains -d target.tld (tokens required)
+- github-subdomains -d target.tld (needs tokens)
 - gau, waybackurls, hakrawler for historical paths
-- httpx -l subs.txt -probe -title -status-code -ip -tech-detect -o live.txt
-- dnsx -a -resp -l subs.txt -o dns_resolved.txt
 
-Notes:
-- De-duplicate subdomains; map to IPs and ASN
-- Detect dev, staging, old, beta, qa, preview, backup
-- Enumerate wildcard subdomains vs real assets
+### 3.2 Deduplication and Live Host Discovery
+- sort -u sub*.txt > subs_all.txt
+- dnsx -silent -a -aaaa -cname -retries 2 -l subs_all.txt -o subs_resolved.txt
+- httpx -l subs_resolved.txt -follow-redirects -status-code -title -tech-detect -ip -o httpx.txt
 
----
-
-## 4. IP, ASN, and Cloud Footprint
-
-- whois target.tld | grep -i 'Registrar\|Registrant\|Name Server'
-- whois 1.2.3.4
-- ipinfo.io, bgp.he.net, ASN mapping
-- cloud provider fingerprinting via DNS, TLS, headers
-- Shodan/Censys/ZoomEye queries by org, ASN, SSL cert, favicon hash
-- masscan or naabu (respect rate limits):
-  - naabu -l ips.txt -p - -rate 1000 -o naabu.txt
-  - masscan -p0-65535 1.2.3.0/24 --rate 1000 -oX masscan.xml
+Best practices:
+- Tag service fingerprints (httpx tech-detect) and group by product/version
+- Note wildcard responses; use dnsx -wd to weed them out
 
 ---
 
-## 5. Web Service Discovery and Fingerprinting
+## 4. IP Space and Service Mapping
 
-- httpx -l hosts.txt -p 80,443,8080,8443,8000,9000,3000,5000 -tech-detect -title -status-code -web-server -cdn -o webscan.txt
-- whatweb, wappalyzer, nuclei -tags tech
-- Nginx/Apache headers, X-Powered-By, Server, set-cookie, CSP, CORS
-- TLS info:
-  - openssl s_client -connect target.tld:443 -servername target.tld
-  - sslscan target.tld
+### 4.1 Netblocks and ASN
+- amass intel -org "Target Corp"
+- amass intel -asn <ASN>
+- whois target.tld | grep -i "OrgName\|CIDR"
 
-Key artifacts:
-- Frameworks (WordPress, Django, Rails, Laravel, Express, Spring)
-- CMS/admin panels, default creds likelihood
-- Login endpoints, SSO, OAuth providers
+### 4.2 Port Scanning (Ethical/Scoped)
+- naabu -top-ports 1000 -host target.tld -rate 2000 -o naabu.txt
+- naabu -l subs_resolved.txt -p 1-65535 -o naabu_full.txt
+- nmap -sV -sC -p <ports> -iL targets.txt -oA nmap
+
+Best practices:
+- Respect rate limits; coordinate with blue teams
+- Prefer connect scans for accuracy behind CDNs/WAFs on allowed IPs
+
+---
+
+## 5. Web Fingerprinting and Technology Identification
+
+### 5.1 HTTP Probing and Fingerprinting
+- httpx -l hosts.txt -status-code -title -tech-detect -server -cdn -cname -ip -o httpx_finger.txt
+- curl -I https://host | tee headers.txt
+- whatweb https://host -v
+- wappalyzer-cli https://host
+
+### 5.2 CDN/WAF Identification
+- zdns or httpx -cdn flags
+- wafw00f https://host
+
+Best practices:
+- Record server, x-powered-by, set-cookie flags, CSP, HSTS
+- Identify auth endpoints, tenant hints, locale, feature flags
 
 ---
 
 ## 6. Content Discovery and Crawling
 
-Automated:
-- feroxbuster -u https://target.tld -w wordlist.txt -x php,aspx,jsp,html,js,json -t 50 -C 404,403 -o ferox.txt
-- gobuster dir -u https://target.tld -w raft-medium-directories.txt -x php,txt,conf,bak,zip,tar,gz -o gobuster.txt
-- dirsearch -u https://target.tld -e * -t 50 -o dirsearch.txt
-- katana -u https://target.tld -jc -fx -aff -o katana.txt
+### 6.1 Automated Crawlers
+- katana -u https://host -jc -jsl -aff -fx -o katana.txt
+- hakrawler -url https://host -depth 3 -plain | tee crawl.txt
 
-Historical and backups:
+### 6.2 Wordlist and Fuzzing
+- ffuf -u https://host/FUZZ -w raft-small-words.txt -recursion -rate 500 -t 50 -mc all -fc 404 -o ffuf_paths.json
+- gobuster dir -u https://host -w directory-list-2.3-medium.txt -x php,asp,aspx,js,txt,bak
+
+### 6.3 Parameter Discovery
+- arjun -u https://host -o arjun.json
+- ffuf -u 'https://host/path?FUZZ=test' -w params.txt -fs 0
+
+Best practices:
+- Normalize paths; dedupe with anew/sponge
+- Respect robots.txt but consider security impact of disallowed paths
+
+---
+
+## 7. Historical, OSINT, and Metadata
+
+### 7.1 Historical URLs and Snapshots
+- gau -subs target.tld | tee gau.txt
 - waybackurls target.tld | tee wayback.txt
-- gau --subs target.tld | tee gau.txt
-- gitleaks detect -s . (for local clones)
-- Check /.git/, .env, backup.zip, db.sql, config.old, .DS_Store
+- urlhunter -d target.tld -o urlhunter.txt
 
-Robots and sitemaps:
-- curl -s https://target.tld/robots.txt
-- curl -s https://target.tld/sitemap.xml
+### 7.2 Public Code/Repo Leaks
+- trufflehog github --org target --include-paths 'src|config'
+- gitleaks detect -s . --no-git
+- GitHub code search: org:target filename:.env
 
----
+### 7.3 Document Metadata
+- exiftool *.pdf | tee exif.txt
+- strings binaries for secrets; check embedded endpoints
 
-## 7. JavaScript Recon and Endpoints
-
-- Link/endpoint extraction:
-  - getJS, linkfinder, hakrawler, subjs
-  - katana -u https://target.tld -jc
-- Secrets scanning:
-  - trufflehog filesystem/git, gitleaks, ripgrep patterns
-- Analyze JS for:
-  - Hidden endpoints, API base URLs, feature flags
-  - Third-party services, analytics IDs, S3/GCS buckets
-  - Hardcoded keys/tokens (report responsibly)
-
-Commands:
-- subjs https://target.tld | httpx -mc 200 -o js.txt
-- cat js.txt | xargs -I@ python3 linkfinder.py -i @ -o cli | tee endpoints.txt
+Best practices:
+- Validate findings before reporting; avoid mass downloading sensitive data
 
 ---
 
-## 8. API Recon (REST/GraphQL)
+## 8. API Reconnaissance
 
-- Swagger/OpenAPI discovery: /swagger, /swagger-ui, /v2/api-docs, /openapi.json
-- Postman collections, Insomnia exports
-- GraphQL:
-  - Check /graphql, introspection, GraphiQL
-  - nuclei -t graphql templates
-- Enumerate methods, rate limits, auth mechanisms (JWT, OAuth2, HMAC)
+### 8.1 API Documentation and Discovery
+- Scrape swagger/openapi: /swagger, /swagger.json, /openapi.json
+- ffuf -u https://host/FUZZ -w api-common.txt -mc 200,401,403
 
-Commands:
-- nuclei -u https://api.target.tld -t http/exposures -severity low,medium,high,critical -rl 10 -o nuclei-exposures.txt
-- graphql-voyager if schema available
+### 8.2 Endpoint Enumeration
+- kiterunner scan -u https://api.host -w routes-large.kite -x 10
+- httpx -paths apipaths.txt -status-code -websocket -follow-redirects
 
----
+### 8.3 Versioning, Auth, and Rate Limits
+- Identify x-ratelimit-* headers, JWT issuer/aud, scopes
+- Test OPTIONS/HEAD for CORS hints
 
-## 9. Authentication and Session Observations
-
-- Login flows: username enum, password reset tokens, MFA bypass opportunities
-- Cookie attributes: HttpOnly, Secure, SameSite
-- Session fixation/rotation on login/logout
-- JWT: alg, kid header, expiration, audience, signature checks
-- OAuth misconfig: open redirect, scope escalation, PKCE absence
-
-Quick checks:
-- curl -I https://target.tld | grep -i set-cookie
-- jwt-tool -t eyJ... -d
+Best practices:
+- Keep a per-endpoint sheet: method, auth, content-type, rate limits, responses
 
 ---
 
-## 10. Input Handling and Common Vuln Leads (Recon Angle)
+## 9. Virtual Host, Tenant, and Environment Discovery
 
-- Parameters discovery: common params via waybackurls/gau/katana
-- File upload endpoints and accepted types
-- Debug endpoints: /debug, /actuator, /health, /metrics
-- Error behavior differences for booleans, integers, arrays, JSON bodies
+### 9.1 VHost Enumeration
+- ffuf -u https://IP/ -H 'Host: FUZZ.target.tld' -w subs_resolved.txt -fs 0
+- vhostscan -t https://IP -w vhosts.txt
 
----
+### 9.2 Multi-tenant Hints
+- Look for X-Tenant, orgId, accountId in headers/cookies
+- Try ?tenant=foo, subdomain patterns, and custom domains (CNAMEs)
 
-## 11. Virtual Hosts and Host Header Tricks
-
-- vhost enumeration:
-  - ffuf -u https://target.tld/ -H "Host: FUZZ.target.tld" -w subdomains.txt -fc 301,302,404
-- Host header injection trails: X-Forwarded-Host, X-Original-Host
+### 9.3 Environment Leaks
+- /.env, /config.json, debug flags, verbose error pages
 
 ---
 
-## 12. CORS and CSP Observations
+## 10. Authentication Surface Recon
 
-- curl -I https://target.tld | egrep -i "access-control-allow-origin|content-security-policy"
-- Test permissive CORS on auth endpoints vs public
-- CSP too-permissive script-src, object-src none, frame-ancestors
+### 10.1 IdP and Flows
+- OIDC/SAML: detect /.well-known/openid-configuration
+- Enumerate auth routes: /login, /auth/*, /oauth2/*, /sso/*
 
----
+### 10.2 Password, MFA, and Account Policies
+- Enumerate username formats (emails, UPN)
+- Check rate limits, lockouts, MFA prompts
 
-## 13. CDN, WAF, and Rate Limiting
+### 10.3 Session Management
+- Cookie flags: HttpOnly, Secure, SameSite
+- JWT alg, kid, expiry; session rotation on auth
 
-- Identify WAF fingerprints (Cloudflare, ModSecurity, AWS WAF)
-- Observe challenge pages, 403 patterns
-- Measure rate limits with incremental concurrency; back off
-
----
-
-## 14. Screenshotting and Reporting Artifacts
-
-- httpx -l live.txt -screenshot -o shots/
-- aquatone -scan-timeout 30000 -ports xlarge -out aquatone
-- Eyewitness for HTML reports
+Best practices:
+- Never brute-force beyond scope; coordinate tests
 
 ---
 
-## 15. WordPress/CMS Specific Recon
+## 11. Storage, CDN, and Cloud Asset Discovery
 
-- wpscan --url https://target.tld --enumerate ap,at,tt,cb,dbe
-- Identify xmlrpc.php, /wp-json/ endpoints
-- Themes/plugins versions vs known CVEs
+### 11.1 Cloud Buckets and Endpoints
+- s3scanner, aws s3 ls s3://public-bucket --no-sign-request
+- gcp: gsutil ls gs://bucket
+- Azure: az storage blob list --container-name
 
----
+### 11.2 CDN/Edge Config
+- Enumerate edge rules, caching, bypass params
 
-## 16. Email, SPF/DMARC/DKIM Records
-
-- dig TXT target.tld | grep -i spf
-- dig TXT _dmarc.target.tld
-- dig TXT selector._domainkey.target.tld
-- Verify mail provider (GSuite, O365) and phishing exposure
+Best practices:
+- Respect ToS; avoid data exfiltration beyond proof
 
 ---
 
-## 17. S3/GCS/Azure Buckets and Cloud Storage
+## 12. WebSockets, SSE, and Real-time
 
-- Identify from JS, error messages, CT logs
-- s3scanner, s3recon, gcpbucketbrute, microburst
-- Test list/get/put if within scope and permitted
+### 12.1 Discovery and Fingerprinting
+- httpx -websocket -u https://host
+- Observe upgrade headers, Sec-WebSocket-Protocol
 
----
-
-## 18. Technologies and Versions Mapping
-
-- whatweb -a 3 https://target.tld
-- nuclei -tags tech,cnvd,cve -severity medium,high,critical
-- wappalyzer driver or CLI
+### 12.2 Subscription and Event Patterns
+- Test channels, auth, topic naming for multi-tenant leaks
 
 ---
 
-## 19. Passive OSINT for Web Targets
+## 13. TLS, Certificates, and Security Headers
 
-- Search engines: site:target.tld, inurl:, intitle:
-- GitHub, GitLab, Bitbucket code search for secrets and endpoints
-- Social and job postings for tech stack, environments
-- Breach data sources (reporting strictly per rules)
+### 13.1 TLS
+- sslscan host:443; testssl.sh -U --sneaky host
 
----
+### 13.2 Security Headers
+- curl -I | grep -i 'strict-transport-security\|content-security-policy\|x-frame-options\|referrer-policy\|permissions-policy'
 
-## 20. Automation Pipelines
-
-- Runbook script example:
-  - subfinder + amass -> dnsx -> httpx -> nuclei -> feroxbuster
-  - Dedup and tag outputs by severity and component
-- Use makefiles or simple shell wrappers to keep reproducible
+Best practices:
+- Record deviations per host; report risk and fix guidance
 
 ---
 
-## 21. Data Management
+## 14. Screenshotting and Evidence
 
-- Keep CSV/JSON outputs per stage with timestamps
-- Note scope and permissions beside each artifact
-- Separate sensitive findings; encrypt at rest
+### 14.1 Automated Screenshots
+- gowitness file -f httpx.txt --delay 1 --threads 10 -P shots
+- eyewitness -f urls.txt --web
 
----
-
-## 22. Ethics and Safety
-
-- No exploitation beyond agreed recon
-- Respect rate limits; avoid service degradation
-- Notify stakeholders promptly upon sensitive data exposure
+### 14.2 Notes and Change Tracking
+- Keep timestamps, response hashes (shasum), and diffs
 
 ---
 
-## Appendix A: Handy One-liners
+## 15. Data Management and Reporting
 
-- waybackurls target.tld | anew | uro | httpx -silent -status-code -title
-- gau --subs target.tld | anew | gf xss | tee xss_params.txt
-- cat subs.txt | httpx -path /.git/config -mc 200 -o exposed_git.txt
-- ffuf -w params.txt -u https://target.tld/index.php?FUZZ=test -fs 0
+### 15.1 Normalization and Storage
+- Use CSV/JSONL for hosts, services, issues
+- Tag: asset_type, env, severity, reproducibility
 
-## Appendix B: Wordlists and Resources
-- Seclists: Discovery/DNS, Discovery/Web-Content, quickhits, raft, raft-large-extensions.txt
-- ProjectDiscovery: nuclei-templates
-- PayloadsAllTheThings
-- hackerone/bugcrowd disclosed reports for patterns
+### 15.2 De-duplication and Correlation
+- anew, uro, unfurl to normalize URLs
+- Merge signals: DNS -> HTTP -> Tech -> Vuln
 
-End of notes.
+### 15.3 Deliverables
+- Recon report with prioritized findings, PoC, remediation guidance, and evidence pack
+
+---
+
+## 16. Safe Automation and Rate Control
+
+### 16.1 Throttling
+- Use --rate, --delay, concurrency caps; respect robots and scope
+
+### 16.2 Fail-safes
+- Kill-switch scripts, IP allowlists, and logging
+
+---
+
+## 17. Quick Start Playbooks
+
+### 17.1 Subdomain to Live Host
+- subfinder; amass; dnsx; httpx; naabu; httpx -tech-detect
+
+### 17.2 Content and Params
+- katana/hakrawler; ffuf; arjun; waybackurls; validate with curl
+
+### 17.3 API Recon
+- Find openapi; kiterunner; httpx; rate-limit profiling
+
+---
+
+## 18. Appendices
+
+- Recommended wordlists: SecLists (Discovery/DNS, Web-Content, API)
+- Tools to install: amass, subfinder, naabu, nmap, httpx, ffuf, gobuster, katana, hakrawler, gau, waybackurls, arjun, kiterunner, wafw00f, whatweb, wappalyzer-cli, sslscan, testssl.sh, gowitness, eyewitness
+- Environment tips: use containers, isolated VPN egress, and logging
